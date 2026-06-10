@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>跨端兼容·量子爱心粒子控制台</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        * {
+            margin: 0; padding: 0; box-sizing: border-box;
+            -webkit-touch-callout: none; /* 禁用长按页面弹出菜单 */
+            -webkit-user-select: none;   /* 禁用手机端文字选中 */
+        }
+        body, html {
+            width: 100%; height: 100%; overflow: hidden;
+            background-color: #000000;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            color: #fff;
+        }
+        canvas {
+            display: block; width: 100%; height: 100%;
+            position: absolute; top: 0; left: 0; z-index: 1;
+        }
+
+        /* 手机移动端自适应控制面板 */
+        .control-panel {
+            position: absolute;
+            top: 10px; left: 10px;
+            width: calc(100% - 20px); /* 手机端宽度自适应 */
+            max-width: 320px;
+            max-height: 45vh; /* 限制高度，防止挡住手机屏幕中心 */
+            background: rgba(10, 12, 18, 0.85);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 14px;
+            z-index: 10;
+            overflow-y: auto;
+        }
+        
+        .panel-section { margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+        .section-title { font-size: 0.75rem; font-weight: 700; color: #ff2a6d; text-transform: uppercase; margin-bottom: 8px; }
+        .ctrl-row { margin-bottom: 8px; }
+        .ctrl-row label { display: block; font-size: 0.7rem; color: #8a92a6; margin-bottom: 2px; }
+        .value-badge { float: right; font-family: monospace; color: #ff2a6d; font-size: 0.7rem; }
+
+        input[type="text"] {
+            width: 100%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 6px; padding: 6px 10px; color: #fff; font-size: 0.8rem; outline: none;
+        }
+        input[type="range"] { width: 100%; accent-color: #ff2a6d; }
+
+        .color-pickers { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .color-item {
+            display: flex; align-items: center; background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.1); padding: 4px 6px; border-radius: 6px;
+        }
+        .color-item span { font-size: 0.65rem; color: #8a92a6; flex-grow: 1; }
+        input[type="color"] { border: none; width: 20px; height: 20px; background: transparent; }
+
+        /* 手机端隐藏右下角多余的摄像头画面，避免占地方 */
+        #webcam { display: none; }
+
+        /* 核心跨端解决：遮罩引导层与交互按钮 */
+        .welcome-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(5, 5, 10, 0.9);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 200; transition: opacity 0.5s ease;
+        }
+        .start-btn {
+            background: transparent;
+            color: #ff2a6d;
+            border: 2px solid #ff2a6d;
+            padding: 12px 30px;
+            font-size: 1rem;
+            font-weight: bold;
+            letter-spacing: 2px;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 0 15px rgba(255, 42, 109, 0.3);
+            transition: 0.3s;
+        }
+        .start-btn:active {
+            background: #ff2a6d;
+            color: #fff;
+            box-shadow: 0 0 25px #ff2a6d;
+        }
+        .tip-text {
+            margin-top: 15px;
+            font-size: 0.8rem;
+            color: #666;
+            text-align: center;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="welcome-overlay" id="overlay">
+        <button class="start-btn" id="startBtn">启动量子视觉系统</button>
+        <div class="tip-text">
+            请允许网页申请的摄像头权限<br>
+            建议在手机原生浏览器（如 Safari, Chrome）中打开
+        </div>
+    </div>
+
+    <div class="control-panel">
+        <div class="panel-section">
+            <div class="section-title">文本矩阵</div>
+            <div class="ctrl-row"><input type="text" id="nameInput" value="HEART BEAT"></div>
+            <div class="ctrl-row">
+                <label>字体大小 <span class="value-badge" id="fontSizeVal">24px</span></label>
+                <input type="range" id="fontSizeRange" min="14" max="45" value="24">
+            </div>
+        </div>
+        <div class="panel-section">
+            <div class="section-title">色彩空间</div>
+            <div class="color-pickers">
+                <div class="color-item"><span>爱心主色</span><input type="color" id="partColor" value="#ff2a6d"></div>
+                <div class="color-item"><span>文本辉光</span><input type="color" id="textColor" value="#ffffff"></div>
+            </div>
+        </div>
+        <div class="panel-section">
+            <div class="section-title">动力学参数</div>
+            <div class="ctrl-row">
+                <label>爱心尺寸 <span class="value-badge" id="radiusVal">7</span></label>
+                <input type="range" id="radiusRange" min="3" max="15" step="0.5" value="7">
+            </div>
+            <div class="ctrl-row">
+                <label>粒子总容量 <span class="value-badge" id="countVal">100</span></label>
+                <input type="range" id="countRange" min="30" max="300" step="10" value="100">
+            </div>
+        </div>
+    </div>
+
+    <video id="webcam" autoplay playsinline muted></video>
+    <canvas id="particleCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('particleCanvas');
+        const ctx = canvas.getContext('2d');
+        const videoElement = document.getElementById('webcam');
+        const overlay = document.getElementById('overlay');
+        const startBtn = document.getElementById('startBtn');
+
+        // UI 绑定
+        const nameInput = document.getElementById('nameInput');
+        const fontSizeRange = document.getElementById('fontSizeRange');
+        const partColorInput = document.getElementById('partColor');
+        const textColorInput = document.getElementById('textColor');
+        const radiusRange = document.getElementById('radiusRange');
+        const countRange = document.getElementById('countRange');
+
+        const bindBadge = (slider, badgeId, unit = "") => {
+            slider.addEventListener('input', () => document.getElementById(badgeId).innerText = slider.value + unit);
+        };
+        bindBadge(fontSizeRange, 'fontSizeVal', 'px');
+        bindBadge(radiusRange, 'radiusVal');
+        bindBadge(countRange, 'countVal');
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        const hand = { x: 0, y: 0, active: false, mode: 'none' };
+        const particles = [];
+
+        function hexToRgb(hex) {
+            let result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) } : { r: 255, g: 42, b: 109 };
+        }
+
+        function getHeartPos(angle, scale) {
+            const sinA = Math.sin(angle);
+            const x = 16 * Math.pow(sinA, 3);
+            const y = 13 * Math.cos(angle) - 5 * Math.cos(2 * angle) - 2 * Math.cos(3 * angle) - Math.cos(4 * angle);
+            // 手机端屏幕窄，对心形的几何宽高比进行了平衡微调
+            return { x: x * scale * 0.9, y: -y * scale * 0.9 };
+        }
+
+        class ConfigurableParticle {
+            constructor() {
+                this.angle = Math.random() * Math.PI * 2;
+                this.angularSpeed = (Math.random() * 0.02 + 0.02) * (Math.random() > 0.5 ? 1 : -1);
+                this.size = Math.random() * 1.2 + 1;
+                this.vx = (Math.random() - 0.5) * 12;
+                this.vy = (Math.random() - 0.5) * 12;
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+            }
+            update() {
+                const baseScale = parseFloat(radiusRange.value);
+                if (hand.active) {
+                    this.angle += this.angularSpeed * 2.5;
+                    let currentScale = baseScale;
+                    if (hand.mode === 'contract') currentScale = baseScale * 0.25;
+                    if (hand.mode === 'expand') currentScale = baseScale * 2.2;
+                    if (hand.mode === 'victory') currentScale = baseScale * 1.15;
+
+                    const offset = getHeartPos(this.angle, currentScale);
+                    const targetX = hand.x + offset.x;
+                    const targetY = hand.y + offset.y;
+
+                    this.x += (targetX - this.x) * 0.35;
+                    this.y += (targetY - this.y) * 0.35;
+                } else {
+                    this.x += this.vx * 0.8;
+                    this.y += this.vy * 0.8;
+                    if (this.x < 0 || this.x > canvas.width) this.vx *= -1;
+                    if (this.y < 0 || this.y > canvas.height) this.vy *= -1;
+                }
+            }
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = partColorInput.value;
+                ctx.fill();
+            }
+        }
+
+        function updateParticlePool() {
+            const targetCount = parseInt(countRange.value);
+            if (particles.length < targetCount) {
+                while(particles.length < targetCount) particles.push(new ConfigurableParticle());
+            } else if (particles.length > targetCount) {
+                particles.splice(targetCount);
+            }
+        }
+
+        function drawOrbitNetwork() {
+            if (!hand.active) return;
+            const rgb = hexToRgb(partColorInput.value);
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    let dx = particles[i].x - particles[j].x;
+                    let dy = particles[i].y - particles[j].y;
+                    let dist = Math.hypot(dx, dy);
+                    if (dist < 35) {
+                        let alpha = (1 - dist / 35) * 0.2;
+                        ctx.strokeStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
+                        ctx.lineWidth = 0.3;
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        function loop() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            updateParticlePool();
+            particles.forEach(p => { p.update(); p.draw(); });
+            drawOrbitNetwork();
+
+            if (hand.active && hand.mode === 'victory') {
+                ctx.save();
+                ctx.font = `bold ${fontSizeRange.value}px -apple-system, sans-serif`;
+                ctx.fillStyle = textColorInput.value;
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = partColorInput.value;
+                const baseScale = parseFloat(radiusRange.value);
+                ctx.fillText(nameInput.value, hand.x, hand.y + baseScale * 1.8);
+                ctx.restore();
+            }
+            requestAnimationFrame(loop);
+        }
+        loop();
+
+        function onResults(results) {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                hand.active = true;
+                const landmarks = results.multiHandLandmarks[0];
+
+                const targetX = (1 - landmarks[9].x) * canvas.width;
+                const targetY = landmarks[9].y * canvas.height;
+                
+                hand.x += (targetX - hand.x) * 0.4;
+                hand.y += (targetY - hand.y) * 0.4;
+
+                const isIndexUp = landmarks[8].y < landmarks[6].y;
+                const isMiddleUp = landmarks[12].y < landmarks[10].y;
+                const isRingUp = landmarks[16].y < landmarks[14].y;
+                const isPinkyUp = landmarks[20].y < landmarks[18].y;
+
+                if (isIndexUp && isMiddleUp && !isRingUp && !isPinkyUp) {
+                    hand.mode = 'victory';
+                } else {
+                    const wrist = landmarks[0];
+                    let totalD = 0;
+                    [4, 8, 12, 16, 20].forEach(id => totalD += Math.hypot(landmarks[id].x - wrist.x, landmarks[id].y - wrist.y));
+                    hand.mode = (totalD / 5 < 0.24) ? 'contract' : 'expand';
+                }
+            } else {
+                hand.active = false;
+                hand.mode = 'none';
+            }
+        }
+
+        // 针对手机端做出的 MediaPipe 性能大瘦身：
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 0,         // 【核心降载】从 1 降到 0，抛弃不必要的高维骨骼计算，主攻基础手势，极大提升手机流畅度
+            minDetectionConfidence: 0.6,
+            minTrackingConfidence: 0.6
+        });
+        hands.onResults(onResults);
+
+        // --- 手机端摄像头环境安全唤醒机制 ---
+        let camera = null;
+
+        startBtn.addEventListener('click', () => {
+            overlay.style.opacity = '0';
+            setTimeout(() => overlay.style.display = 'none', 500);
+
+            // 手机端必备的低分辨率输入流，速度优先
+            camera = new Camera(videoElement, {
+                onFrame: async () => {
+                    await hands.send({ image: videoElement });
+                },
+                width: 256,   // 【核心兼容】降低手机镜头解析度，显著降低 CPU 负载
+                height: 192
+            });
+            
+            // 执行启动
+            camera.start().catch(err => {
+                alert("摄像头启动失败，请检查是否拒绝了权限，或换用手机自带的系统浏览器（Safari/Chrome）打开。");
+            });
+        });
+    </script>
+</body>
+</html>
