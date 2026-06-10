@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>量子爱心粒子精密控制台</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000000;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            cursor: crosshair;
+            color: #fff;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0; left: 0;
+            z-index: 1;
+        }
+
+        /* 赛博朋克精密控制面板 */
+        .control-panel {
+            position: absolute;
+            top: 15px; left: 15px;
+            width: 330px;
+            max-height: calc(100vh - 30px);
+            background: rgba(10, 12, 18, 0.8);
+            backdrop-filter: blur(25px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 14px;
+            padding: 20px;
+            z-index: 10;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.9);
+            overflow-y: auto;
+        }
+        
+        .control-panel::-webkit-scrollbar { width: 4px; }
+        .control-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 2px; }
+
+        .panel-section {
+            margin-bottom: 18px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            padding-bottom: 12px;
+        }
+        .panel-section:last-child { border: none; margin-bottom: 0; padding-bottom: 0; }
+        
+        .section-title {
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: #ff2a6d; /* 换成浪漫的多巴胺粉红主题色 */
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 12px;
+        }
+
+        .ctrl-row {
+            margin-bottom: 10px;
+        }
+        
+        .ctrl-row label {
+            display: block;
+            font-size: 0.75rem;
+            color: #8a92a6;
+            margin-bottom: 4px;
+        }
+        
+        .value-badge {
+            float: right;
+            font-family: monospace;
+            color: #ff2a6d;
+            font-size: 0.75rem;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 6px;
+            padding: 7px 10px;
+            color: #fff;
+            font-size: 0.85rem;
+            outline: none;
+        }
+        input[type="text"]:focus { border-color: #ff2a6d; background: rgba(255,255,255,0.08); }
+        
+        input[type="range"] {
+            width: 100%;
+            accent-color: #ff2a6d;
+            cursor: pointer;
+        }
+
+        .color-pickers {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        .color-item {
+            display: flex;
+            align-items: center;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.1);
+            padding: 4px 8px;
+            border-radius: 6px;
+        }
+        .color-item span { font-size: 0.7rem; color: #8a92a6; flex-grow: 1; }
+        input[type="color"] {
+            border: none; width: 24px; height: 24px;
+            background: transparent; cursor: pointer;
+        }
+
+        #webcam {
+            transform: scaleX(-1);
+            position: absolute;
+            width: 90px; height: 68px;
+            bottom: 15px; right: 15px;
+            z-index: 10;
+            border-radius: 6px;
+            opacity: 0.2;
+            border: 1px solid rgba(255,255,255,0.1);
+            background: #000;
+        }
+
+        #loading {
+            position: absolute;
+            top: 20px; right: 20px;
+            color: #ff2a6d; font-family: monospace; font-size: 0.75rem;
+            z-index: 100; background: rgba(0,0,0,0.6); padding: 6px 12px; border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loading">📡 INITIALIZING HEART CORE MATRIX...</div>
+
+    <div class="control-panel">
+        <div class="panel-section">
+            <div class="section-title">文本矩阵 (比"2"触发)</div>
+            <div class="ctrl-row">
+                <label>呈现内容</label>
+                <input type="text" id="nameInput" value="HEART BEAT">
+            </div>
+            <div class="ctrl-row">
+                <label>字体大小 <span class="value-badge" id="fontSizeVal">28px</span></label>
+                <input type="range" id="fontSizeRange" min="16" max="60" step="1" value="28">
+            </div>
+            <div class="ctrl-row">
+                <label>字体粗细 <span class="value-badge" id="fontWeightVal">700</span></label>
+                <input type="range" id="fontWeightRange" min="300" max="900" step="100" value="700">
+            </div>
+        </div>
+
+        <div class="panel-section">
+            <div class="section-title">色彩空间</div>
+            <div class="color-pickers">
+                <div class="color-item">
+                    <span>爱心主色</span>
+                    <input type="color" id="partColor" value="#ff2a6d">
+                </div>
+                <div class="color-item">
+                    <span>文本辉光</span>
+                    <input type="color" id="textColor" value="#ffffff">
+                </div>
+            </div>
+        </div>
+
+        <div class="panel-section">
+            <div class="section-title">动力学参数</div>
+            <div class="ctrl-row">
+                <label>爱心尺寸比例 <span class="value-badge" id="radiusVal">10</span></label>
+                <input type="range" id="radiusRange" min="4" max="22" step="0.5" value="10">
+            </div>
+            <div class="ctrl-row">
+                <label>角速度 (流速快慢) <span class="value-badge" id="speedVal">2.5x</span></label>
+                <input type="range" id="speedRange" min="0.5" max="5.0" step="0.1" value="2.5">
+            </div>
+            <div class="ctrl-row">
+                <label>约束锁定力 <span class="value-badge" id="forceVal">0.30</span></label>
+                <input type="range" id="forceRange" min="0.05" max="0.60" step="0.01" value="0.30">
+            </div>
+            <div class="ctrl-row">
+                <label>粒子总容量 <span class="value-badge" id="countVal">180</span></label>
+                <input type="range" id="countRange" min="30" max="500" step="10" value="180">
+            </div>
+        </div>
+
+        <div class="panel-section">
+            <div class="section-title">实时遥测 (Telemetry)</div>
+            <div class="ctrl-row">
+                <label>手势捕捉状态: <span class="value-badge" id="teleState" style="color:#aaa;">DISCONNECTED</span></label>
+            </div>
+            <div class="ctrl-row">
+                <label>中心点坐标: <span class="value-badge" id="teleCoords" style="color:#aaa;">X:0, Y:0</span></label>
+            </div>
+        </div>
+    </div>
+
+    <video id="webcam" autoplay playsinline></video>
+    <canvas id="particleCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('particleCanvas');
+        const ctx = canvas.getContext('2d');
+        const videoElement = document.getElementById('webcam');
+        const loading = document.getElementById('loading');
+
+        // UI 控制元素
+        const nameInput = document.getElementById('nameInput');
+        const fontSizeRange = document.getElementById('fontSizeRange');
+        const fontWeightRange = document.getElementById('fontWeightRange');
+        const partColorInput = document.getElementById('partColor');
+        const textColorInput = document.getElementById('textColor');
+        const radiusRange = document.getElementById('radiusRange');
+        const speedRange = document.getElementById('speedRange');
+        const forceRange = document.getElementById('forceRange');
+        const countRange = document.getElementById('countRange');
+
+        const teleState = document.getElementById('teleState');
+        const teleCoords = document.getElementById('teleCoords');
+
+        const bindBadge = (slider, badgeId, unit = "") => {
+            slider.addEventListener('input', () => {
+                document.getElementById(badgeId).innerText = slider.value + unit;
+            });
+        };
+        bindBadge(fontSizeRange, 'fontSizeVal', 'px');
+        bindBadge(fontWeightRange, 'fontWeightVal');
+        bindBadge(radiusRange, 'radiusVal');
+        bindBadge(speedRange, 'speedVal', 'x');
+        bindBadge(forceRange, 'forceVal');
+        bindBadge(countRange, 'countVal');
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        const hand = { x: 0, y: 0, active: false, mode: 'none' };
+        const particles = [];
+
+        function hexToRgb(hex) {
+            let result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? {
+                r: parseInt(result[1], 16),
+                g: parseInt(result[2], 16),
+                b: parseInt(result[3], 16)
+            } : { r: 255, g: 42, b: 109 };
+        }
+
+        // 心形轨迹核心代数方程（基于经典的心形笛卡尔坐标极坐标转换）
+        // $x = 16 \sin^3(\theta)$, $y = 13 \cos(\theta) - 5 \cos(2\theta) - 2 \cos(3\theta) - \cos(4\theta)$
+        function getHeartPos(angle, scale) {
+            const sinA = Math.sin(angle);
+            const x = 16 * Math.pow(sinA, 3);
+            const y = 13 * Math.cos(angle) - 5 * Math.cos(2 * angle) - 2 * Math.cos(3 * angle) - Math.cos(4 * angle);
+            // 注意 Canvas 坐标系 Y 轴向下，所以写成 -y 将心形正过来
+            return { x: x * scale, y: -y * scale };
+        }
+
+        class ConfigurableParticle {
+            constructor() {
+                this.angle = Math.random() * Math.PI * 2;
+                this.angularSpeed = (Math.random() * 0.015 + 0.015) * (Math.random() > 0.5 ? 1 : -1);
+                this.size = Math.random() * 1.5 + 1;
+                this.vx = (Math.random() - 0.5) * 16;
+                this.vy = (Math.random() - 0.5) * 16;
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+            }
+
+            update() {
+                const baseScale = parseFloat(radiusRange.value);
+                const speedMultiplier = parseFloat(speedRange.value);
+                const constraintForce = parseFloat(forceRange.value);
+
+                if (hand.active) {
+                    // 1. 角度在切线上高频流转
+                    this.angle += this.angularSpeed * speedMultiplier;
+
+                    // 2. 根据当前手势形态分配爱心缩放比
+                    let currentScale = baseScale;
+                    if (hand.mode === 'contract') currentScale = baseScale * 0.25; // 压缩成超小爱心核
+                    if (hand.mode === 'expand') currentScale = baseScale * 2.3;     // 炸裂成超大爱心圈
+                    if (hand.mode === 'victory') currentScale = baseScale * 1.15;   // 完美托举文字
+
+                    // 3. 计算粒子在爱心轨迹线上的“目标归宿点”
+                    const offset = getHeartPos(this.angle, currentScale);
+                    const targetX = hand.x + offset.x;
+                    const targetY = hand.y + offset.y;
+
+                    // 4. 强向心锁定：强行将粒子从当前位置拽向心形边界落点
+                    this.x += (targetX - this.x) * constraintForce * 2.5;
+                    this.y += (targetY - this.y) * constraintForce * 2.5;
+
+                } else {
+                    // 无手势状态：纯净散开，撞墙反弹
+                    this.x += this.vx * (speedMultiplier * 0.4);
+                    this.y += this.vy * (speedMultiplier * 0.4);
+
+                    if (this.x < 0 || this.x > canvas.width) this.vx *= -1;
+                    if (this.y < 0 || this.y > canvas.height) this.vy *= -1;
+                }
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = partColorInput.value;
+                ctx.fill();
+            }
+        }
+
+        function updateParticlePool() {
+            const targetCount = parseInt(countRange.value);
+            if (particles.length < targetCount) {
+                while(particles.length < targetCount) particles.push(new ConfigurableParticle());
+            } else if (particles.length > targetCount) {
+                particles.splice(targetCount);
+            }
+        }
+
+        // 精密拉丝：仅在心形流动线上紧靠的粒子之间进行连线
+        function drawOrbitNetwork() {
+            if (!hand.active) return;
+            const rgb = hexToRgb(partColorInput.value);
+
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    let dx = particles[i].x - particles[j].x;
+                    let dy = particles[i].y - particles[j].y;
+                    let dist = Math.hypot(dx, dy);
+
+                    if (dist < 40) {
+                        let alpha = (1 - dist / 40) * 0.25;
+                        ctx.strokeStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
+                        ctx.lineWidth = 0.4;
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        function loop() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.25)'; // 保持高刷新率、清爽无死角的纯黑蒙层
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            updateParticlePool();
+
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            drawOrbitNetwork();
+
+            // 如果比“2”，名字会平滑浮现于爱心中央
+            if (hand.active && hand.mode === 'victory') {
+                ctx.save();
+                
+                const fSize = fontSizeRange.value;
+                const fWeight = fontWeightRange.value;
+                ctx.font = `${fWeight} ${fSize}px -apple-system, sans-serif`;
+                
+                ctx.fillStyle = textColorInput.value;
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                
+                // 辉光随着爱心自定义色同步变化
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = partColorInput.value;
+                
+                // 心形正中心会因为坐标系的公式原因产生微调，y + baseScale可让文字完美居中于双心房中间
+                const baseScale = parseFloat(radiusRange.value);
+                ctx.fillText(nameInput.value, hand.x, hand.y + baseScale * 2);
+                ctx.restore();
+            }
+
+            requestAnimationFrame(loop);
+        }
+        loop();
+
+        // --- MediaPipe 视觉AI高敏解算 ---
+        function onResults(results) {
+            if (loading) loading.innerText = "🛰️ HEART MATRIX: ONLINE";
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                hand.active = true;
+                const landmarks = results.multiHandLandmarks[0];
+
+                const targetX = (1 - landmarks[9].x) * canvas.width;
+                const targetY = landmarks[9].y * canvas.height;
+                
+                hand.x += (targetX - hand.x) * 0.35;
+                hand.y += (targetY - hand.y) * 0.35;
+
+                teleCoords.innerText = `X: ${Math.round(hand.x)}, Y: ${Math.round(hand.y)}`;
+
+                const isIndexUp = landmarks[8].y < landmarks[6].y;
+                const isMiddleUp = landmarks[12].y < landmarks[10].y;
+                const isRingUp = landmarks[16].y < landmarks[14].y;
+                const isPinkyUp = landmarks[20].y < landmarks[18].y;
+
+                if (isIndexUp && isMiddleUp && !isRingUp && !isPinkyUp) {
+                    hand.mode = 'victory';
+                    teleState.innerText = "VICTORY (比2显示名字)";
+                    teleState.style.color = "#ff2a6d";
+                } else {
+                    const wrist = landmarks[0];
+                    let totalD = 0;
+                    [4, 8, 12, 16, 20].forEach(id => totalD += Math.hypot(landmarks[id].x - wrist.x, landmarks[id].y - wrist.y));
+                    
+                    if (totalD / 5 < 0.23) {
+                        hand.mode = 'contract';
+                        teleState.innerText = "CONTRACT (全缩坍塌)";
+                        teleState.style.color = "#00e5ff";
+                    } else {
+                        hand.mode = 'expand';
+                        teleState.innerText = "EXPAND (全扩轰击)";
+                        teleState.style.color = "#ff0096";
+                    }
+                }
+            } else {
+                hand.active = false;
+                hand.mode = 'none';
+                teleState.innerText = "DISCONNECTED";
+                teleState.style.color = "#8a92a6";
+                teleCoords.innerText = "X: 0, Y: 0";
+            }
+        }
+
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.7,
+            minTrackingConfidence: 0.7
+        });
+        hands.onResults(onResults);
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => { await hands.send({ image: videoElement }); },
+            width: 320, height: 240
+        });
+        camera.start();
+    </script>
+</body>
+</html>
